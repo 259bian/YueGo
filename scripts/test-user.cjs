@@ -1,0 +1,20 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const ts=require('D:/school-2026/DevEco Studio/tools/hvigor/hvigor/node_modules/typescript');
+const source=fs.readFileSync(path.join(__dirname,'../entry/src/main/ets/services/UserService.ets'),'utf8');
+const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const mod={exports:{}};new Function('exports','require','module',code)(mod.exports,require,mod);const s=mod.exports;
+let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
+const account={username:'Alice',password:'demo1234',nickname:'小悦',addresses:[]};
+const a={id:'a',name:'小悦',phone:'13800138000',region:'上海市 浦东新区',detail:'示例街道100号',isDefault:false};
+test('valid registration and invalid usernames',()=>{assert.equal(s.validateRegistration([],'User_01','demo1234','demo1234'),'');for(const name of ['abc','含中文','space name','x'.repeat(21)])assert.ok(s.validateRegistration([],name,'demo1234','demo1234'));});
+test('duplicate username ignores case',()=>assert.ok(s.validateRegistration([account],'alice','demo1234','demo1234')));
+test('password length, composition and confirmation',()=>{for(const p of ['short1','12345678','abcdefgh','a1'.repeat(17)])assert.ok(s.validateRegistration([],'User01',p,p));assert.ok(s.validateRegistration([],'User01','demo1234','demo5678'));});
+test('authentication succeeds and rejects wrong credentials',()=>{assert.equal(s.authenticate([account],' alice ','demo1234'),'Alice');assert.equal(s.authenticate([account],'Alice','wrong'),'');assert.equal(s.authenticate([account],'Other','demo1234'),'');});
+test('address validation rejects incomplete fields',()=>{assert.equal(s.validateAddress(a),'');for(const invalid of [{...a,name:' '},{...a,phone:'123'},{...a,region:' '},{...a,detail:'短'}])assert.ok(s.validateAddress(invalid));});
+test('first address becomes default and later one does not',()=>{let list=s.saveAddress([],a);assert.equal(list[0].isDefault,true);list=s.saveAddress(list,{...a,id:'b'});assert.equal(list.filter(v=>v.isDefault).length,1);assert.equal(list.find(v=>v.isDefault).id,'a');});
+test('setting default and editing preserve a unique default',()=>{let list=s.saveAddress(s.saveAddress([],a),{...a,id:'b',isDefault:true});assert.equal(list.find(v=>v.isDefault).id,'b');list=s.saveAddress(list,{...a,id:'b',detail:'新的街道200号'});assert.equal(list.length,2);assert.equal(list.find(v=>v.isDefault).id,'b');list=s.defaultAddress(list,'a');assert.equal(list.filter(v=>v.isDefault).length,1);assert.equal(list.find(v=>v.isDefault).id,'a');});
+test('delete default chooses remaining address; delete last yields empty',()=>{let list=s.saveAddress(s.saveAddress([],a),{...a,id:'b'});list=s.deleteAddress(list,'a');assert.equal(list[0].isDefault,true);assert.deepEqual(s.deleteAddress(list,'b'),[]);});
+test('invalid edits and missing default id leave data unchanged',()=>{const list=s.saveAddress([],a);assert.deepEqual(s.saveAddress(list,{...a,phone:'bad'}),list);assert.deepEqual(s.defaultAddress(list,'missing'),list);});
+test('address operations do not modify input objects',()=>{const list=s.saveAddress([],a);const before=JSON.stringify(list);s.saveAddress(list,{...a,id:'b',isDefault:true});s.defaultAddress(list,'a');s.deleteAddress(list,'a');assert.equal(JSON.stringify(list),before);assert.equal(a.isDefault,false);});
+test('guest and two account sessions remain separate',()=>{const store=new s.SessionStore();store.save('',[],['guest-product']);store.save('Alice',[],['alice-product']);store.save('Bob',[],['bob-product']);assert.deepEqual(store.restore('').favorites,['guest-product']);assert.deepEqual(store.restore('Alice').favorites,['alice-product']);assert.deepEqual(store.restore('Bob').favorites,['bob-product']);assert.deepEqual(store.restore('new').favorites,[]);const restored=store.restore('Alice');restored.favorites.push('extra');assert.deepEqual(store.restore('Alice').favorites,['alice-product']);});
+console.log(count+' user tests passed. Device UI checks remain separate.');
